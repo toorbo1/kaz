@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lucky Drum</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            color: white;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .profile, .balance {
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .game-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .drum-wrapper {
+            position: relative;
+            width: 320px;
+            height: 320px;
+            margin-top: 40px;
+            perspective: 1000px;
+        }
+        
+        .drum {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 4s cubic-bezier(0.17, 0.67, 0.21, 0.99);
+        }
+        
+        .drum-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(145deg, #434343, #000000);
+            border-radius: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: gold;
+            text-shadow: 0 0 15px rgba(255,215,0,0.7);
+            box-shadow: 
+                inset 0 0 15px rgba(0,0,0,0.7),
+                0 10px 30px rgba(0,0,0,0.5);
+            backface-visibility: hidden;
+            border: 4px solid rgba(255,215,0,0.5);
+            clip-path: polygon(
+                0% 15%, 15% 15%, 15% 0%, 85% 0%, 85% 15%, 
+                100% 15%, 100% 85%, 85% 85%, 85% 100%, 
+                15% 100%, 15% 85%, 0% 85%
+            );
+        }
+        
+        .spin-button-container {
+            margin-bottom: 40px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+        
+        .spin-button {
+            padding: 18px 40px;
+            background: linear-gradient(to right, #f12711, #f5af19);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 
+                0 6px 20px rgba(241, 39, 17, 0.3),
+                inset 0 2px 4px rgba(255,255,255,0.2);
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .spin-button:active {
+            transform: scale(0.95);
+        }
+        
+        .spin-button:disabled {
+            background: linear-gradient(to right, #7f8c8d, #95a5a6);
+            cursor: not-allowed;
+        }
+        
+        @keyframes glow {
+            0% { text-shadow: 0 0 10px rgba(255,215,0,0.7); }
+            50% { text-shadow: 0 0 20px rgba(255,215,0,0.9); }
+            100% { text-shadow: 0 0 10px rgba(255,215,0,0.7); }
+        }
+        
+        .win-animation {
+            animation: glow 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="profile">👤 Игрок</div>
+        <div class="balance">💰 1000</div>
+    </div>
+    
+    <div class="game-container">
+        <div class="drum-wrapper">
+            <div class="drum" id="drum">
+                <div class="drum-face" style="transform: rotateX(0deg) translateZ(160px)">6000</div>
+                <div class="drum-face" style="transform: rotateX(51.4deg) translateZ(160px)">100</div>
+                <div class="drum-face" style="transform: rotateX(102.8deg) translateZ(160px)">200</div>
+                <div class="drum-face" style="transform: rotateX(154.2deg) translateZ(160px)">500</div>
+                <div class="drum-face" style="transform: rotateX(205.6deg) translateZ(160px)">600</div>
+                <div class="drum-face" style="transform: rotateX(257deg) translateZ(160px)">1000</div>
+                <div class="drum-face" style="transform: rotateX(308.4deg) translateZ(160px)">3000</div>
+            </div>
+        </div>
+        
+        <div class="spin-button-container">
+            <button class="spin-button" id="spinBtn">Крутить барабан</button>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // Призы на барабане
+        const prizes = [6000, 100, 200, 500, 600, 1000, 3000];
+        const spinCost = 50;
+        
+        // Данные пользователя
+        let user = {
+            name: tg.initDataUnsafe.user?.first_name || "Игрок",
+            balance: 1000,
+            isSpinning: false
+        };
+        
+        // Обновляем интерфейс
+        document.querySelector('.profile').textContent = `👤 ${user.name}`;
+        updateBalance();
+        
+        function updateBalance() {
+            document.querySelector('.balance').textContent = `💰 ${user.balance}`;
+        }
+        
+        // Обработчик кнопки
+        document.getElementById('spinBtn').addEventListener('click', () => {
+            if (user.isSpinning || user.balance < spinCost) return;
+            
+            user.isSpinning = true;
+            user.balance -= spinCost;
+            updateBalance();
+            document.getElementById('spinBtn').disabled = true;
+            
+            // Анимация вращения
+            const drum = document.getElementById('drum');
+            const spins = 3 + Math.floor(Math.random() * 2); // 3-4 оборота
+            const winningIndex = Math.floor(Math.random() * prizes.length);
+            const degreesPerPrize = 360 / prizes.length;
+            const targetAngle = spins * 360 + (winningIndex * degreesPerPrize);
+            
+            // Сбрасываем предыдущую анимацию
+            drum.style.transition = 'none';
+            drum.style.transform = 'rotateX(0deg)';
+            
+            // Запускаем новую анимацию
+            setTimeout(() => {
+                drum.style.transition = `transform 4s cubic-bezier(0.17, 0.67, 0.21, 0.99)`;
+                drum.style.transform = `rotateX(${targetAngle}deg)`;
+            }, 10);
+            
+            // Определяем выигрыш после анимации
+            setTimeout(() => {
+                const winAmount = prizes[winningIndex];
+                user.balance += winAmount;
+                user.isSpinning = false;
+                
+                updateBalance();
+                document.getElementById('spinBtn').disabled = false;
+                
+                // Подсветка выигрыша
+                const drumFaces = document.querySelectorAll('.drum-face');
+                drumFaces.forEach(face => face.classList.remove('win-animation'));
+                drumFaces[winningIndex].classList.add('win-animation');
+                
+                // Показываем результат
+                tg.showAlert(`🎉 Поздравляем! Вы выиграли ${winAmount}$!`, () => {
+                    setTimeout(() => {
+                        drumFaces[winningIndex].classList.remove('win-animation');
+                    }, 2000);
+                });
+            }, 4050);
+        });
+    </script>
+</body> 
+</html>
